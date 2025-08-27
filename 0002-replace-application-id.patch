@@ -1,0 +1,39 @@
+From 9d261d5cae76a34cce948a906aa5f187d1722d12 Mon Sep 17 00:00:00 2001
+From: 283375 <bilibili283375@163.com>
+Date: Wed, 27 Aug 2025 18:09:38 +0800
+Subject: [PATCH 2/2] replace application id
+
+---
+ easytier-gui/src-tauri/gen/android/app/build.gradle.kts | 2 +-
+ easytier-gui/src/composables/mobile_vpn.ts              | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/easytier-gui/src-tauri/gen/android/app/build.gradle.kts b/easytier-gui/src-tauri/gen/android/app/build.gradle.kts
+index f55d32d..2ba300f 100644
+--- a/easytier-gui/src-tauri/gen/android/app/build.gradle.kts
++++ b/easytier-gui/src-tauri/gen/android/app/build.gradle.kts
+@@ -19,7 +19,7 @@ android {
+     namespace = "com.kkrainbow.easytier"
+     defaultConfig {
+         manifestPlaceholders["usesCleartextTraffic"] = "false"
+-        applicationId = "com.kkrainbow.easytier"
++        applicationId = "xyz.sevive.easytier.split"
+         minSdk = 24
+         targetSdk = 34
+         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
+diff --git a/easytier-gui/src/composables/mobile_vpn.ts b/easytier-gui/src/composables/mobile_vpn.ts
+index a231bde..2d697e0 100644
+--- a/easytier-gui/src/composables/mobile_vpn.ts
++++ b/easytier-gui/src/composables/mobile_vpn.ts
+@@ -53,7 +53,7 @@ async function doStartVpn(ipv4Addr: string, cidr: number, routes: string[]) {
+   const start_ret = await start_vpn({
+     ipv4Addr: `${ipv4Addr}/${cidr}`,
+     routes,
+-    disallowedApplications: ['com.kkrainbow.easytier'],
++    disallowedApplications: ['xyz.sevive.easytier.split'],
+     mtu: 1300,
+   })
+   if (start_ret?.errorMsg?.length) {
+-- 
+2.51.0.windows.1
+

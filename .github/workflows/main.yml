@@ -1,0 +1,58 @@
+name: Main
+
+on:
+  workflow_dispatch:
+    inputs:
+      easytier_tag:
+        description: "Which tag of EasyTier to build, leave blank for latest"
+        required: false
+        type: string
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    name: Prepare Source Code
+
+    steps:
+      - name: Find latest tag of EasyTier
+        if: ${{ !inputs.easytier_tag }}
+        uses: oprypin/find-latest-tag@v1
+        id: version
+        with:
+          repository: "EasyTier/EasyTier"
+          releases-only: true
+
+      - name: Determine EasyTier tag
+        run: |
+          echo "EASYTIER_TAG=${{ inputs.easytier_tag || steps.version.outputs.tag }}" >> "$GITHUB_ENV"
+
+      - name: Checkout EasyTier
+        uses: actions/checkout@v4
+        with:
+          repository: "EasyTier/EasyTier"
+          ref: ${{ env.EASYTIER_TAG }}
+
+      - name: Prepare patches directory
+        run: |
+          export DIR=${{ runner.temp }}/patches
+          mkdir "${DIR}"
+          echo "PATCHES_DIR=$(realpath $DIR)" >> "$GITHUB_ENV
+
+      - name: Checkout patches
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.PATCHES_DIR }}
+
+      - name: Apply patches
+        run: |
+          git am "${PATCHES_DIR}/*.patch"
+
+      - name: Pack source code for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-patched
+          path: .
+          include-hidden-files: true
+
+  # build:
+  #   uses: ./.github/workflows/build-apk.yml

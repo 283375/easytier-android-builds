@@ -1,7 +1,17 @@
-name: Build EasyTier Mobile APK
+name: Build EasyTier Android APK
 
 on:
   workflow_call:
+    inputs:
+      source_artifact_name:
+        description: "The artifact name of patched source code"
+        required: false
+        type: string
+        default: source-patched
+    outputs:
+      outputs_artifact_name:
+        description: "The artifact name of built APKs"
+        value: "easytier-gui-android"
 
 env:
   CARGO_TERM_COLOR: always
@@ -9,17 +19,17 @@ env:
 jobs:
   build:
     name: Build
-    runs-on: ubuntu-latest
-
     env:
+      OS: ubuntu-latest
       NAME: easytier
       TARGET: android
+    runs-on: ubuntu-latest
 
     steps:
       - name: Fetch source code
         uses: actions/download-artifact@v5
         with:
-          name: source-patched
+          name: ${{ inputs.source_artifact_name }}
 
       - name: Set current ref as env variable
         run: |
@@ -40,7 +50,7 @@ jobs:
         run: |
           echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
           echo "$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-          echo "NDK_HOME=$ANDROID_HOME/ndk/26.0.10792818/" > $GITHUB_ENV
+          echo "NDK_HOME=$ANDROID_HOME/ndk/26.0.10792818/" >> $GITHUB_ENV
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -84,10 +94,14 @@ jobs:
           cd easytier-gui
           pnpm tauri android build --apk --split-per-abi
 
-      - name: Compress
+      - name: Check outputs
         run: |
-          mkdir -p ./artifacts/objects/
-          mv easytier-gui/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk ./artifacts/objects/
+          tree easytier-gui/src-tauri/gen/android/app/build/outputs/apk
+
+      - name: Prepare artifacts
+        run: |
+          mkdir -p ./artifacts
+          find . -type f -name "*.apk" -print0 | xargs -0 -I {} mv {} ./artifacts/
 
           if [[ $GITHUB_REF_TYPE =~ ^tag$ ]]; then
             TAG=$GITHUB_REF_NAME
@@ -95,12 +109,10 @@ jobs:
             TAG=$GITHUB_SHA
           fi
 
-          mv ./artifacts/objects/* ./artifacts
-          rm -rf ./artifacts/objects/
-
-      - name: Archive artifact
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: easytier-gui-android
           path: |
             ./artifacts/*
+        id: upload-artifacts

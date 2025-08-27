@@ -32,27 +32,28 @@ jobs:
           repository: "EasyTier/EasyTier"
           ref: ${{ env.EASYTIER_TAG }}
 
-      - name: Prepare patches directory
-        run: |
-          export DIR=${{ runner.temp }}/patches
-          mkdir "${DIR}"
-          echo "PATCHES_DIR=$(realpath $DIR)" >> "$GITHUB_ENV
-
-      - name: Checkout patches
+      - name: Prepare patches
         uses: actions/checkout@v4
         with:
-          path: ${{ env.PATCHES_DIR }}
+          path: my-patches
+
+      # https://github.com/orgs/community/discussions/40405#discussioncomment-8361451
+      - name: Set git identities
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor_id }}+${{ github.actor }}@users.noreply.github.com"
 
       - name: Apply patches
         run: |
-          git am "${PATCHES_DIR}/*.patch"
+          find "${GITHUB_WORKSPACE}/my-patches" -type f -name "*.patch" -print0 | sort -z | xargs -0 -I {} git am {}
 
-      - name: Pack source code for review
+      - name: Pack source code
         uses: actions/upload-artifact@v4
         with:
           name: source-patched
           path: .
           include-hidden-files: true
 
-  # build:
-  #   uses: ./.github/workflows/build-apk.yml
+  build:
+    needs: prepare
+    uses: ./.github/workflows/build-apk.yml

@@ -1,17 +1,25 @@
-# Custom Android Builds
+# EasyTier 自定义构建
 
-## Build Workflow Diff
+结果一般在最新 Actions 中。
 
-> git diff --no-index mobile.yml .github/workflows/build-apk.yml
+## 更改项
+
+### 启用 split abi
+
+主要修改于构建 workflow，详见 [build-apk.yml](.github/workflows/build-apk.yml)
+
+<details>
+
+<summary><i>git diff --no-index mobile.yml .github/workflows/build-apk.yml</i></summary>
 
 ```diff
 diff --git a/mobile.yml b/.github/workflows/build-apk.yml
-index 102a5c5..e483dbd 100644
+index 102a5c5..9114472 100644
 --- a/mobile.yml
 +++ b/.github/workflows/build-apk.yml
-@@ -1,53 +1,25 @@
+@@ -1,53 +1,35 @@
 -name: EasyTier Mobile
-+name: Build EasyTier Mobile APK
++name: Build EasyTier Android APK
  
  on:
 -  push:
@@ -19,6 +27,16 @@ index 102a5c5..e483dbd 100644
 -  pull_request:
 -    branches: ["develop", "main"]
 +  workflow_call:
++    inputs:
++      source_artifact_name:
++        description: "The artifact name of patched source code"
++        required: false
++        type: string
++        default: source-patched
++    outputs:
++      outputs_artifact_name:
++        description: "The artifact name of built APKs"
++        value: "easytier-gui-android"
  
  env:
    CARGO_TERM_COLOR: always
@@ -31,9 +49,7 @@ index 102a5c5..e483dbd 100644
  jobs:
 -  pre_job:
 -    # continue-on-error: true # Uncomment once integration is finished
-+  build:
-+    name: Build
-     runs-on: ubuntu-latest
+-    runs-on: ubuntu-latest
 -    # Map a step output to a job output
 -    outputs:
 -      should_skip: ${{ steps.skip_check.outputs.should_skip == 'true' && !startsWith(github.ref_name, 'releases/') }}
@@ -55,8 +71,10 @@ index 102a5c5..e483dbd 100644
 -            OS: ubuntu-22.04
 -            ARTIFACT_NAME: android
 -    runs-on: ${{ matrix.OS }}
-+
++  build:
++    name: Build
      env:
++      OS: ubuntu-latest
        NAME: easytier
 -      TARGET: ${{ matrix.TARGET }}
 -      OS: ${{ matrix.OS }}
@@ -64,27 +82,31 @@ index 102a5c5..e483dbd 100644
 -    needs: pre_job
 -    if: needs.pre_job.outputs.should_skip != 'true'
 +      TARGET: android
++    runs-on: ubuntu-latest
 +
      steps:
 -      - uses: actions/checkout@v3
 +      - name: Fetch source code
 +        uses: actions/download-artifact@v5
 +        with:
-+          name: source-patched
++          name: ${{ inputs.source_artifact_name }}
  
        - name: Set current ref as env variable
          run: |
-@@ -70,28 +42,17 @@ jobs:
+@@ -68,11 +50,7 @@ jobs:
+         run: |
+           echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
            echo "$ANDROID_HOME/ndk/26.0.10792818/toolchains/llvm/prebuilt/linux-x86_64/bin" >> $GITHUB_PATH
-           echo "NDK_HOME=$ANDROID_HOME/ndk/26.0.10792818/" > $GITHUB_ENV
- 
+-          echo "NDK_HOME=$ANDROID_HOME/ndk/26.0.10792818/" > $GITHUB_ENV
+-
 -      - uses: actions/setup-node@v4
 -        with:
 -          node-version: 22
--
++          echo "NDK_HOME=$ANDROID_HOME/ndk/26.0.10792818/" >> $GITHUB_ENV
+ 
        - name: Install pnpm
          uses: pnpm/action-setup@v4
-         with:
+@@ -80,18 +58,11 @@ jobs:
            version: 10
            run_install: false
  
@@ -107,17 +129,36 @@ index 102a5c5..e483dbd 100644
  
        - name: Install frontend dependencies
          run: |
-@@ -121,7 +82,7 @@ jobs:
+@@ -121,12 +92,16 @@ jobs:
        - name: Build Android
          run: |
            cd easytier-gui
 -          pnpm tauri android build
 +          pnpm tauri android build --apk --split-per-abi
++
++      - name: Check outputs
++        run: |
++          tree easytier-gui/src-tauri/gen/android/app/build/outputs/apk
  
-       - name: Compress
+-      - name: Compress
++      - name: Prepare artifacts
          run: |
-@@ -140,17 +101,6 @@ jobs:
-       - name: Archive artifact
+-          mkdir -p ./artifacts/objects/
+-          mv easytier-gui/src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release.apk ./artifacts/objects/
++          mkdir -p ./artifacts
++          find . -type f -name "*.apk" -print0 | xargs -0 -I {} mv {} ./artifacts/
+ 
+           if [[ $GITHUB_REF_TYPE =~ ^tag$ ]]; then
+             TAG=$GITHUB_REF_NAME
+@@ -134,23 +109,10 @@ jobs:
+             TAG=$GITHUB_SHA
+           fi
+ 
+-          mv ./artifacts/objects/* ./artifacts
+-          rm -rf ./artifacts/objects/
+-
+-      - name: Archive artifact
++      - name: Upload artifacts
          uses: actions/upload-artifact@v4
          with:
 -          name: easytier-gui-${{ matrix.ARTIFACT_NAME }}
@@ -135,4 +176,11 @@ index 102a5c5..e483dbd 100644
 -      - name: Mark result as failed
 -        if: needs.build-mobile.result != 'success'
 -        run: exit 1
++        id: upload-artifacts
 ```
+
+</details>
+
+### 图标与应用 ID 更改
+
+图标源文件见 [app-icon-tauri.svg](./app-icon-tauri.svg)

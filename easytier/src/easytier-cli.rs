@@ -25,6 +25,7 @@ use easytier::{
         constants::EASYTIER_VERSION,
         stun::{StunInfoCollector, StunInfoCollectorTrait},
     },
+    peers,
     proto::{
         cli::{
             list_peer_route_pair, AclManageRpc, AclManageRpcClientFactory, AddPortForwardRequest,
@@ -573,10 +574,34 @@ impl CommandHandler<'_> {
             items.push(p.into());
         }
 
-        // Sort items by ipv4 (using IpAddr for proper numeric comparison) first, then by hostname
+        // Sort items: local IP first, then public servers, then other servers by IP
         items.sort_by(|a, b| {
             use std::net::{IpAddr, Ipv4Addr};
             use std::str::FromStr;
+
+            // Priority 1: Local IP (cost is "Local")
+            let a_is_local = a.cost == "Local";
+            let b_is_local = b.cost == "Local";
+            if a_is_local != b_is_local {
+                return if a_is_local {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                };
+            }
+
+            // Priority 2: Public servers
+            let a_is_public = a.hostname.starts_with(peers::PUBLIC_SERVER_HOSTNAME_PREFIX);
+            let b_is_public = b.hostname.starts_with(peers::PUBLIC_SERVER_HOSTNAME_PREFIX);
+            if a_is_public != b_is_public {
+                return if a_is_public {
+                    std::cmp::Ordering::Less
+                } else {
+                    std::cmp::Ordering::Greater
+                };
+            }
+
+            // Priority 3: Sort by IP address
             let a_ip = IpAddr::from_str(&a.ipv4).unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
             let b_ip = IpAddr::from_str(&b.ipv4).unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
             match a_ip.cmp(&b_ip) {
@@ -2060,12 +2085,12 @@ mod win_service_manager {
             let service = self
                 .service_manager
                 .create_service(&service_info, ServiceAccess::ALL_ACCESS)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                .map_err(io::Error::other)?;
 
             if let Some(s) = description {
                 service
                     .set_description(s.clone())
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                    .map_err(io::Error::other)?;
             }
 
             if let Some(work_dir) = ctx.working_directory {
@@ -2079,33 +2104,27 @@ mod win_service_manager {
             let service = self
                 .service_manager
                 .open_service(ctx.label.to_qualified_name(), ServiceAccess::ALL_ACCESS)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                .map_err(io::Error::other)?;
 
-            service
-                .delete()
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            service.delete().map_err(io::Error::other)
         }
 
         fn start(&self, ctx: ServiceStartCtx) -> io::Result<()> {
             let service = self
                 .service_manager
                 .open_service(ctx.label.to_qualified_name(), ServiceAccess::ALL_ACCESS)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                .map_err(io::Error::other)?;
 
-            service
-                .start(&[] as &[&OsStr])
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+            service.start(&[] as &[&OsStr]).map_err(io::Error::other)
         }
 
         fn stop(&self, ctx: ServiceStopCtx) -> io::Result<()> {
             let service = self
                 .service_manager
                 .open_service(ctx.label.to_qualified_name(), ServiceAccess::ALL_ACCESS)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                .map_err(io::Error::other)?;
 
-            _ = service
-                .stop()
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            _ = service.stop().map_err(io::Error::other)?;
 
             Ok(())
         }
@@ -2117,10 +2136,7 @@ mod win_service_manager {
         fn set_level(&mut self, level: ServiceLevel) -> io::Result<()> {
             match level {
                 ServiceLevel::System => Ok(()),
-                _ => Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    "Unsupported service level",
-                )),
+                _ => Err(io::Error::other("Unsupported service level")),
             }
         }
 
@@ -2136,13 +2152,11 @@ mod win_service_manager {
                             return Ok(ServiceStatus::NotInstalled);
                         }
                     }
-                    return Err(io::Error::new(io::ErrorKind::Other, e));
+                    return Err(io::Error::other(e));
                 }
             };
 
-            let status = service
-                .query_status()
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let status = service.query_status().map_err(io::Error::other)?;
 
             match status.current_state {
                 windows_service::service::ServiceState::Stopped => Ok(ServiceStatus::Stopped(None)),

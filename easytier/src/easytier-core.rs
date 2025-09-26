@@ -288,7 +288,6 @@ struct NetworkOptions {
         long,
         env = "ET_ENCRYPTION_ALGORITHM",
         help = t!("core_clap.encryption_algorithm").to_string(),
-        default_value = "aes-gcm",
         value_parser = get_avaliable_encrypt_methods()
     )]
     encryption_algorithm: Option<String>,
@@ -427,6 +426,15 @@ struct NetworkOptions {
 
     #[arg(
         long,
+        env = "ET_DISABLE_SYM_HOLE_PUNCHING",
+        help = t!("core_clap.disable_sym_hole_punching").to_string(),
+        num_args = 0..=1,
+        default_missing_value = "true"
+    )]
+    disable_sym_hole_punching: Option<bool>,
+
+    #[arg(
+        long,
         env = "ET_RELAY_ALL_PEER_RPC",
         help = t!("core_clap.relay_all_peer_rpc").to_string(),
         num_args = 0..=1,
@@ -555,6 +563,15 @@ struct NetworkOptions {
         default_missing_value = "true"
     )]
     enable_relay_foreign_network_kcp: Option<bool>,
+
+    #[arg(
+        long,
+        env = "ET_STUN_SERVERS",
+        value_delimiter = ',',
+        help = t!("core_clap.stun_servers").to_string(),
+        num_args = 0..
+    )]
+    stun_servers: Option<Vec<String>>,
 }
 
 #[derive(Parser, Debug)]
@@ -910,6 +927,7 @@ impl NetworkOptions {
         f.enable_relay_foreign_network_kcp = self
             .enable_relay_foreign_network_kcp
             .unwrap_or(f.enable_relay_foreign_network_kcp);
+        f.disable_sym_hole_punching = self.disable_sym_hole_punching.unwrap_or(false);
         cfg.set_flags(f);
 
         if !self.exit_nodes.is_empty() {
@@ -923,6 +941,10 @@ impl NetworkOptions {
         let mut old_udp_whitelist = cfg.get_udp_whitelist();
         old_udp_whitelist.extend(self.udp_whitelist.clone());
         cfg.set_udp_whitelist(old_udp_whitelist);
+
+        if let Some(stun_servers) = &self.stun_servers {
+            cfg.set_stun_servers(stun_servers.clone());
+        }
 
         Ok(())
     }

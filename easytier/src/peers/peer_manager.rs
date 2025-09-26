@@ -32,7 +32,7 @@ use crate::{
         peer_conn::PeerConn,
         peer_rpc::PeerRpcManagerTransport,
         recv_packet_from_chan,
-        route_trait::{ForeignNetworkRouteInfoMap, NextHopPolicy, RouteInterface},
+        route_trait::{ForeignNetworkRouteInfoMap, MockRoute, NextHopPolicy, RouteInterface},
         PeerPacketFilter,
     },
     proto::{
@@ -40,7 +40,9 @@ use crate::{
             self, list_global_foreign_network_response::OneForeignNetwork,
             ListGlobalForeignNetworkResponse,
         },
-        peer_rpc::{ForeignNetworkRouteInfoEntry, ForeignNetworkRouteInfoKey},
+        peer_rpc::{
+            ForeignNetworkRouteInfoEntry, ForeignNetworkRouteInfoKey, RouteForeignNetworkSummary,
+        },
     },
     tunnel::{
         self,
@@ -632,6 +634,7 @@ impl PeerManager {
         let acl_filter = self.global_ctx.get_acl_filter().clone();
         let global_ctx = self.global_ctx.clone();
         let stats_mgr = self.global_ctx.stats_manager().clone();
+        let route = self.get_route();
 
         let label_set =
             LabelSet::new().with_label_type(LabelType::NetworkName(global_ctx.get_network_name()));
@@ -735,6 +738,7 @@ impl PeerManager {
                         true,
                         global_ctx.get_ipv4().map(|x| x.address()),
                         global_ctx.get_ipv6().map(|x| x.address()),
+                        &route,
                     ) {
                         continue;
                     }
@@ -912,7 +916,7 @@ impl PeerManager {
     pub fn get_route(&self) -> Box<dyn Route + Send + Sync + 'static> {
         match &self.route_algo_inst {
             RouteAlgoInst::Ospf(route) => Box::new(route.clone()),
-            RouteAlgoInst::None => panic!("no route"),
+            RouteAlgoInst::None => Box::new(MockRoute {}),
         }
     }
 
@@ -953,12 +957,18 @@ impl PeerManager {
         resp
     }
 
+    pub async fn get_foreign_network_summary(&self) -> RouteForeignNetworkSummary {
+        self.get_route().get_foreign_network_summary().await
+    }
+
     async fn run_nic_packet_process_pipeline(&self, data: &mut ZCPacket) {
-        if !self
-            .global_ctx
-            .get_acl_filter()
-            .process_packet_with_acl(data, false, None, None)
-        {
+        if !self.global_ctx.get_acl_filter().process_packet_with_acl(
+            data,
+            false,
+            None,
+            None,
+            &self.get_route(),
+        ) {
             return;
         }
 
@@ -986,7 +996,19 @@ impl PeerManager {
     }
 
     pub async fn send_msg(&self, msg: ZCPacket, dst_peer_id: PeerId) -> Result<(), Error> {
-        Self::send_msg_internal(&self.peers, &self.foreign_network_client, msg, dst_peer_id).await
+        self.self_tx_counters
+            .self_tx_bytes
+            .add(msg.buf_len() as u64);
+        self.self_tx_counters.self_tx_packets.inc();
+        let msg_len = msg.buf_len() as u64;
+        let result =
+            Self::send_msg_internal(&self.peers, &self.foreign_network_client, msg, dst_peer_id)
+                .await;
+        if result.is_ok() {
+            self.self_tx_counters.self_tx_bytes.add(msg_len);
+            self.self_tx_counters.self_tx_packets.inc();
+        }
+        result
     }
 
     async fn send_msg_internal(
@@ -1363,6 +1385,11 @@ impl PeerManager {
         else {
             return false;
         };
+
+        if next_hop_id == dst_peer_id {
+            // dst p2p, no need to relay
+            return true;
+        }
 
         let Some(next_hop_info) = route.get_peer_info(next_hop_id).await else {
             return false;

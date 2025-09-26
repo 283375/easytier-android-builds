@@ -3,7 +3,7 @@ name = "easytier"
 description = "A full meshed p2p VPN, connecting all your devices in one network with one command."
 homepage = "https://github.com/EasyTier/EasyTier"
 repository = "https://github.com/EasyTier/EasyTier"
-version = "2.4.4"
+version = "2.4.5"
 edition = "2021"
 authors = ["kkrainbow"]
 keywords = ["vpn", "p2p", "network", "easytier"]
@@ -237,6 +237,7 @@ windows = { version = "0.52.0", features = [
     "Win32_System_Com",
     "Win32_Networking",
     "Win32_System_Ole",
+    "Win32_System_Variant",
     "Win32_Networking_WinSock",
     "Win32_System_IO",
 ] }

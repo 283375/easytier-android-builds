@@ -1,5 +1,5 @@
 name: Main
-run-name: Main (${{ inputs.easytier_tag || 'Auto tag' }} by @${{ github.actor }})
+run-name: Main (${{ inputs.easytier_tag || 'Auto tag' }})
 
 on:
   workflow_dispatch:

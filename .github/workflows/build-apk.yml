@@ -3,11 +3,11 @@ name: Build EasyTier Android APK
 on:
   workflow_call:
     inputs:
-      source_artifact_name:
-        description: "The artifact name of patched source code"
+      branch_name:
+        description: "The branch name of patched source code"
         required: false
         type: string
-        default: source-patched
+        default: app
     outputs:
       outputs_artifact_name:
         description: "The artifact name of built APKs"
@@ -26,10 +26,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Fetch source code
-        uses: actions/download-artifact@v5
+      - name: Checkout source code
+        uses: actions/checkout@v4
         with:
-          name: ${{ inputs.source_artifact_name }}
+          ref: 'app'
 
       - name: Set current ref as env variable
         run: |

@@ -3,7 +3,7 @@ name = "easytier"
 description = "A full meshed p2p VPN, connecting all your devices in one network with one command."
 homepage = "https://github.com/EasyTier/EasyTier"
 repository = "https://github.com/EasyTier/EasyTier"
-version = "2.4.0"
+version = "2.4.1"
 edition = "2021"
 authors = ["kkrainbow"]
 keywords = ["vpn", "p2p", "network", "easytier"]
@@ -115,7 +115,7 @@ byteorder = "1.5.0"
 
 # for proxy
 cidr = { version = "0.2.2", features = ["serde"] }
-socket2 = "0.5.5"
+socket2 = { version = "0.5.10", features = ["all"] }
 
 # for hole punching
 stun_codec = "0.3.4"

@@ -19,7 +19,7 @@ android {
     namespace = "com.kkrainbow.easytier"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "com.kkrainbow.easytier"
+        applicationId = "xyz.sevive.easytier.split"
         minSdk = 24
         targetSdk = 34
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()

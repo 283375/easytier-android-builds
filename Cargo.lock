@@ -1876,7 +1876,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.0",
- "windows-sys 0.59.0",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2119,9 +2119,10 @@ dependencies = [
  "dashmap",
  "dunce",
  "easytier",
- "elevated-command",
  "gethostname 1.0.2",
+ "libc",
  "once_cell",
+ "security-framework-sys",
  "serde",
  "serde_json",
  "tauri",
@@ -2137,6 +2138,8 @@ dependencies = [
  "thunk-rs",
  "tokio",
  "uuid",
+ "winapi",
+ "windows 0.52.0",
 ]
 
 [[package]]
@@ -2205,20 +2208,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60b1af1c220855b6ceac025d3f6ecdd2b7c4894bfe9cd9bda4fbb4bc7c0d4cf0"
 dependencies = [
  "serde",
-]
-
-[[package]]
-name = "elevated-command"
-version = "1.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54c410eccdcc5b759704fdb6a792afe6b01ab8a062e2c003ff2567e2697a94aa"
-dependencies = [
- "anyhow",
- "base64 0.21.7",
- "libc",
- "log",
- "winapi",
- "windows 0.52.0",
 ]
 
 [[package]]
@@ -7557,9 +7546,9 @@ dependencies = [
 
 [[package]]
 name = "socket2"
-version = "0.5.7"
+version = "0.5.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ce305eb0b4296696835b71df73eb912e0f1ffd2556a501fcede6e0c50349191c"
+checksum = "e22376abed350d73dd1cd119b57ffccad95b4e585a7cda43e286245ce23c0678"
 dependencies = [
  "libc",
  "windows-sys 0.52.0",

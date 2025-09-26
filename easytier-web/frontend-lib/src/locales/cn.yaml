@@ -44,6 +44,8 @@ logging_open_dir: 打开日志目录
 logging_copy_dir: 复制日志路径
 disable_auto_launch: 关闭开机自启
 enable_auto_launch: 开启开机自启
+hide_dock_icon: 隐藏 Dock 图标
+show_dock_icon: 显示 Dock 图标
 exit: 退出
 chips_placeholder: 例如： {0}, 输入后在下拉框中选择生效
 hostname_placeholder: '留空默认为主机名: {0}'
@@ -210,6 +212,7 @@ event:
   ConnectionError: 连接错误
   Connecting: 正在连接
   ConnectError: 连接错误
+  VpnPortalStarted: VPN门户已启动
   VpnPortalClientConnected: VPN门户客户端已连接
   VpnPortalClientDisconnected: VPN门户客户端已断开连接
   DhcpIpv4Changed: DHCP IPv4地址更改

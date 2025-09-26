@@ -30,16 +30,18 @@ use easytier::{
         cli::{
             list_peer_route_pair, AclManageRpc, AclManageRpcClientFactory, AddPortForwardRequest,
             ConnectorManageRpc, ConnectorManageRpcClientFactory, DumpRouteRequest,
-            GetAclStatsRequest, GetPrometheusStatsRequest, GetStatsRequest,
+            GetAclStatsRequest, GetLoggerConfigRequest, GetPrometheusStatsRequest, GetStatsRequest,
             GetVpnPortalInfoRequest, GetWhitelistRequest, ListConnectorRequest,
             ListForeignNetworkRequest, ListGlobalForeignNetworkRequest, ListMappedListenerRequest,
             ListPeerRequest, ListPeerResponse, ListPortForwardRequest, ListRouteRequest,
-            ListRouteResponse, ManageMappedListenerRequest, MappedListenerManageAction,
-            MappedListenerManageRpc, MappedListenerManageRpcClientFactory, NodeInfo, PeerManageRpc,
+            ListRouteResponse, LogLevel, LoggerRpc, LoggerRpcClientFactory,
+            ManageMappedListenerRequest, MappedListenerManageAction, MappedListenerManageRpc,
+            MappedListenerManageRpcClientFactory, NodeInfo, PeerManageRpc,
             PeerManageRpcClientFactory, PortForwardManageRpc, PortForwardManageRpcClientFactory,
-            RemovePortForwardRequest, SetWhitelistRequest, ShowNodeInfoRequest, StatsRpc,
-            StatsRpcClientFactory, TcpProxyEntryState, TcpProxyEntryTransportType, TcpProxyRpc,
-            TcpProxyRpcClientFactory, VpnPortalRpc, VpnPortalRpcClientFactory,
+            RemovePortForwardRequest, SetLoggerConfigRequest, SetWhitelistRequest,
+            ShowNodeInfoRequest, StatsRpc, StatsRpcClientFactory, TcpProxyEntryState,
+            TcpProxyEntryTransportType, TcpProxyRpc, TcpProxyRpcClientFactory, VpnPortalRpc,
+            VpnPortalRpcClientFactory,
         },
         common::{NatType, SocketType},
         peer_rpc::{GetGlobalPeerMapRequest, PeerCenterRpc, PeerCenterRpcClientFactory},
@@ -47,7 +49,7 @@ use easytier::{
         rpc_types::controller::BaseController,
     },
     tunnel::tcp::TcpTunnelConnector,
-    utils::{cost_to_str, float_to_str, PeerRoutePair},
+    utils::{cost_to_str, PeerRoutePair},
 };
 
 rust_i18n::i18n!("locales", fallback = "en");
@@ -105,6 +107,8 @@ enum SubCommand {
     Whitelist(WhitelistArgs),
     #[command(about = "show statistics information")]
     Stats(StatsArgs),
+    #[command(about = "manage logger configuration")]
+    Logger(LoggerArgs),
     #[command(about = t!("core_clap.generate_completions").to_string())]
     GenAutocomplete { shell: Shell },
 }
@@ -270,6 +274,23 @@ enum StatsSubCommand {
     Show,
     /// Show statistics in Prometheus format
     Prometheus,
+}
+
+#[derive(Args, Debug)]
+struct LoggerArgs {
+    #[command(subcommand)]
+    sub_command: Option<LoggerSubCommand>,
+}
+
+#[derive(Subcommand, Debug)]
+enum LoggerSubCommand {
+    /// Get current logger configuration
+    Get,
+    /// Set logger level
+    Set {
+        #[arg(help = "Log level (disabled, error, warning, info, debug, trace)")]
+        level: String,
+    },
 }
 
 #[derive(Args, Debug)]
@@ -443,6 +464,18 @@ impl CommandHandler<'_> {
             .with_context(|| "failed to get stats client")?)
     }
 
+    async fn get_logger_client(
+        &self,
+    ) -> Result<Box<dyn LoggerRpc<Controller = BaseController>>, Error> {
+        Ok(self
+            .client
+            .lock()
+            .await
+            .scoped_client::<LoggerRpcClientFactory<BaseController>>("".to_string())
+            .await
+            .with_context(|| "failed to get logger client")?)
+    }
+
     async fn list_peers(&self) -> Result<ListPeerResponse, Error> {
         let client = self.get_peer_manager_client().await?;
         let request = ListPeerRequest::default();
@@ -484,12 +517,19 @@ impl CommandHandler<'_> {
             ipv4: String,
             hostname: String,
             cost: String,
+            #[tabled(rename = "lat(ms)")]
             lat_ms: String,
+            #[tabled(rename = "loss")]
             loss_rate: String,
+            #[tabled(rename = "rx")]
             rx_bytes: String,
+            #[tabled(rename = "tx")]
             tx_bytes: String,
+            #[tabled(rename = "tunnel")]
             tunnel_proto: String,
+            #[tabled(rename = "NAT")]
             nat_type: String,
+            #[tabled(skip)]
             id: String,
             version: String,
         }
@@ -497,6 +537,11 @@ impl CommandHandler<'_> {
         impl From<PeerRoutePair> for PeerTableItem {
             fn from(p: PeerRoutePair) -> Self {
                 let route = p.route.clone().unwrap_or_default();
+                let lat_ms = if route.cost == 1 {
+                    p.get_latency_ms().unwrap_or(0.0)
+                } else {
+                    route.path_latency_latency_first() as f64
+                };
                 PeerTableItem {
                     cidr: route.ipv4_addr.map(|ip| ip.to_string()).unwrap_or_default(),
                     ipv4: route
@@ -506,12 +551,8 @@ impl CommandHandler<'_> {
                         .unwrap_or_default(),
                     hostname: route.hostname.clone(),
                     cost: cost_to_str(route.cost),
-                    lat_ms: if route.cost == 1 {
-                        float_to_str(p.get_latency_ms().unwrap_or(0.0), 3)
-                    } else {
-                        route.path_latency_latency_first().to_string()
-                    },
-                    loss_rate: float_to_str(p.get_loss_rate().unwrap_or(0.0), 3),
+                    lat_ms: format!("{:.2}", lat_ms),
+                    loss_rate: format!("{:.1}%", p.get_loss_rate().unwrap_or(0.0) * 100.0),
                     rx_bytes: format_size(p.get_rx_bytes().unwrap_or(0), humansize::DECIMAL),
                     tx_bytes: format_size(p.get_tx_bytes().unwrap_or(0), humansize::DECIMAL),
                     tunnel_proto: p
@@ -1155,6 +1196,66 @@ impl CommandHandler<'_> {
         Ok(())
     }
 
+    async fn handle_logger_get(&self) -> Result<(), Error> {
+        let client = self.get_logger_client().await?;
+        let request = GetLoggerConfigRequest {};
+        let response = client
+            .get_logger_config(BaseController::default(), request)
+            .await?;
+
+        match self.output_format {
+            OutputFormat::Table => {
+                let level_str = match response.level() {
+                    LogLevel::Disabled => "disabled",
+                    LogLevel::Error => "error",
+                    LogLevel::Warning => "warning",
+                    LogLevel::Info => "info",
+                    LogLevel::Debug => "debug",
+                    LogLevel::Trace => "trace",
+                };
+                println!("Current Log Level: {}", level_str);
+            }
+            OutputFormat::Json => {
+                let json = serde_json::to_string_pretty(&response)?;
+                println!("{}", json);
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn handle_logger_set(&self, level: &str) -> Result<(), Error> {
+        let log_level = match level.to_lowercase().as_str() {
+            "disabled" => LogLevel::Disabled,
+            "error" => LogLevel::Error,
+            "warning" => LogLevel::Warning,
+            "info" => LogLevel::Info,
+            "debug" => LogLevel::Debug,
+            "trace" => LogLevel::Trace,
+            _ => return Err(anyhow::anyhow!("Invalid log level: {}. Valid levels are: disabled, error, warning, info, debug, trace", level)),
+        };
+
+        let client = self.get_logger_client().await?;
+        let request = SetLoggerConfigRequest {
+            level: log_level.into(),
+        };
+        let response = client
+            .set_logger_config(BaseController::default(), request)
+            .await?;
+
+        match self.output_format {
+            OutputFormat::Table => {
+                println!("Log level successfully set to: {}", level);
+            }
+            OutputFormat::Json => {
+                let json = serde_json::to_string_pretty(&response)?;
+                println!("{}", json);
+            }
+        }
+
+        Ok(())
+    }
+
     fn parse_port_list(ports_str: &str) -> Result<Vec<String>, Error> {
         let mut ports = Vec::new();
         for port_spec in ports_str.split(',') {
@@ -1460,7 +1561,7 @@ where
 {
     match format {
         OutputFormat::Table => {
-            println!("{}", tabled::Table::new(items).with(Style::modern()));
+            println!("{}", tabled::Table::new(items).with(Style::markdown()));
         }
         OutputFormat::Json => {
             println!("{}", serde_json::to_string_pretty(items)?);
@@ -1752,7 +1853,7 @@ async fn main() -> Result<(), Error> {
                         builder.push_record(vec![format!("Listener {}", idx).as_str(), l]);
                     }
 
-                    println!("{}", builder.build().with(Style::modern()));
+                    println!("{}", builder.build().with(Style::markdown()));
                 }
                 Some(NodeSubCommand::Config) => {
                     println!("{}", node_info.config);
@@ -1986,6 +2087,14 @@ async fn main() -> Result<(), Error> {
                     .await?;
 
                 println!("{}", response.prometheus_text);
+            }
+        },
+        SubCommand::Logger(logger_args) => match &logger_args.sub_command {
+            Some(LoggerSubCommand::Get) | None => {
+                handler.handle_logger_get().await?;
+            }
+            Some(LoggerSubCommand::Set { level }) => {
+                handler.handle_logger_set(level).await?;
             }
         },
         SubCommand::GenAutocomplete { shell } => {

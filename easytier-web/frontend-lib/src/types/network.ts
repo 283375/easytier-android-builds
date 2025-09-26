@@ -71,7 +71,7 @@ export interface NetworkConfig {
   enable_private_mode?: boolean
 
   rpc_portal_whitelists: string[]
-  
+
   port_forwards: PortForwardConfig[]
 }
 
@@ -246,10 +246,14 @@ export interface PeerRoutePair {
   peer?: PeerInfo
 }
 
+export interface UrlPb {
+  url: string
+}
+
 export interface TunnelInfo {
   tunnel_type: string
-  local_addr: string
-  remote_addr: string
+  local_addr: UrlPb
+  remote_addr: UrlPb
 }
 
 export interface PeerConnStats {
@@ -302,6 +306,7 @@ export enum EventType {
   Connecting = 'Connecting', // any
   ConnectError = 'ConnectError', // string, string, string
 
+  VpnPortalStarted = 'VpnPortalStarted', // string
   VpnPortalClientConnected = 'VpnPortalClientConnected', // string, string
   VpnPortalClientDisconnected = 'VpnPortalClientDisconnected', // string, string, string
 

@@ -1,6 +1,6 @@
 # EasyTier 自定义构建
 
-结果一般在最新 Actions 中。
+结果在 [Releases](https://github.com/283375/easytier-android-builds/releases) 中。
 
 ## 更改项
 
@@ -184,3 +184,17 @@ index 102a5c5..9114472 100644
 ### 图标与应用 ID 更改
 
 图标源文件见 [app-icon-tauri.svg](./app-icon-tauri.svg)
+
+## 主要构建流程
+
+> 详见 [main.yml](.github/workflows/main.yml) 的 `prepare` 部分
+
+1. 拉取 [EasyTier/EasyTier](https://github.com/EasyTier/EasyTier) 源码
+2. Apply `*.patch`es
+3. 删掉 `.git` 和其他无用文件后打包存入 `/tmp`
+4. 替换工作目录为此 repo 的 [app](https://github.com/283375/easytier-android-builds/tree/app) 分支
+5. 将 3. 中的包解压覆盖
+6. `git add . && git commit && git tag`
+7. 构建 & Release & ...
+8. ...
+9. bang15便士

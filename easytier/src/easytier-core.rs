@@ -4,7 +4,7 @@
 extern crate rust_i18n;
 
 use std::{
-    net::{Ipv4Addr, SocketAddr},
+    net::{IpAddr, SocketAddr},
     path::PathBuf,
     process::ExitCode,
     sync::Arc,
@@ -18,8 +18,9 @@ use clap_complete::Shell;
 use easytier::{
     common::{
         config::{
-            ConfigLoader, ConsoleLoggerConfig, FileLoggerConfig, LoggingConfigLoader,
-            NetworkIdentity, PeerConfig, PortForwardConfig, TomlConfigLoader, VpnPortalConfig,
+            get_avaliable_encrypt_methods, ConfigLoader, ConsoleLoggerConfig, FileLoggerConfig,
+            LoggingConfigLoader, NetworkIdentity, PeerConfig, PortForwardConfig, TomlConfigLoader,
+            VpnPortalConfig,
         },
         constants::EASYTIER_VERSION,
         global_ctx::GlobalCtx,
@@ -52,10 +53,15 @@ use jemalloc_ctl::{epoch, stats, Access as _, AsName as _};
 #[global_allocator]
 static ALLOC: jemallocator::Jemalloc = jemallocator::Jemalloc;
 
+#[cfg(feature = "jemalloc-prof")]
+#[allow(non_upper_case_globals)]
+#[export_name = "malloc_conf"]
+pub static malloc_conf: &[u8] = b"prof:true,prof_active:true,lg_prof_sample:19\0";
+
 fn set_prof_active(_active: bool) {
     #[cfg(feature = "jemalloc-prof")]
     {
-        const PROF_ACTIVE: &'static [u8] = b"prof.active\0";
+        const PROF_ACTIVE: &[u8] = b"prof.active\0";
         let name = PROF_ACTIVE.name();
         name.write(_active).expect("Should succeed to set prof");
     }
@@ -64,7 +70,7 @@ fn set_prof_active(_active: bool) {
 fn dump_profile(_cur_allocated: usize) {
     #[cfg(feature = "jemalloc-prof")]
     {
-        const PROF_DUMP: &'static [u8] = b"prof.dump\0";
+        const PROF_DUMP: &[u8] = b"prof.dump\0";
         static mut PROF_DUMP_FILE_NAME: [u8; 128] = [0; 128];
         let file_name_str = format!(
             "profile-{}-{}.out",
@@ -280,6 +286,15 @@ struct NetworkOptions {
 
     #[arg(
         long,
+        env = "ET_ENCRYPTION_ALGORITHM",
+        help = t!("core_clap.encryption_algorithm").to_string(),
+        default_value = "aes-gcm",
+        value_parser = get_avaliable_encrypt_methods()
+    )]
+    encryption_algorithm: Option<String>,
+
+    #[arg(
+        long,
         env = "ET_MULTI_THREAD",
         help = t!("core_clap.multi_thread").to_string(),
         num_args = 0..=1,
@@ -333,7 +348,7 @@ struct NetworkOptions {
         help = t!("core_clap.exit_nodes").to_string(),
         num_args = 0..
     )]
-    exit_nodes: Vec<Ipv4Addr>,
+    exit_nodes: Vec<IpAddr>,
 
     #[arg(
         long,
@@ -510,7 +525,7 @@ struct NetworkOptions {
     #[arg(
         long,
         value_delimiter = ',',
-        help = "TCP port whitelist. Supports single ports (80) and ranges (8000-9000)",
+        help = t!("core_clap.tcp_whitelist").to_string(),
         num_args = 0..
     )]
     tcp_whitelist: Vec<String>,
@@ -518,10 +533,28 @@ struct NetworkOptions {
     #[arg(
         long,
         value_delimiter = ',',
-        help = "UDP port whitelist. Supports single ports (53) and ranges (5000-6000)",
+        help = t!("core_clap.udp_whitelist").to_string(),
         num_args = 0..
     )]
     udp_whitelist: Vec<String>,
+
+    #[arg(
+        long,
+        env = "ET_DISABLE_RELAY_KCP",
+        help = t!("core_clap.disable_relay_kcp").to_string(),
+        num_args = 0..=1,
+        default_missing_value = "true"
+    )]
+    disable_relay_kcp: Option<bool>,
+
+    #[arg(
+        long,
+        env = "ET_ENABLE_RELAY_FOREIGN_NETWORK_KCP",
+        help = t!("core_clap.enable_relay_foreign_network_kcp").to_string(),
+        num_args = 0..=1,
+        default_missing_value = "true"
+    )]
+    enable_relay_foreign_network_kcp: Option<bool>,
 }
 
 #[derive(Parser, Debug)]
@@ -668,7 +701,7 @@ impl NetworkOptions {
                     .map(|s| s.parse().unwrap())
                     .collect(),
             );
-        } else if cfg.get_listeners() == None {
+        } else if cfg.get_listeners().is_none() {
             cfg.set_listeners(
                 Cli::parse_listeners(false, vec!["11010".to_string()])?
                     .into_iter()
@@ -707,7 +740,7 @@ impl NetworkOptions {
         }
 
         for n in self.proxy_networks.iter() {
-            add_proxy_network_to_config(n, &cfg)?;
+            add_proxy_network_to_config(n, cfg)?;
         }
 
         let rpc_portal = if let Some(r) = &self.rpc_portal {
@@ -721,9 +754,9 @@ impl NetworkOptions {
         cfg.set_rpc_portal(rpc_portal);
 
         if let Some(rpc_portal_whitelist) = &self.rpc_portal_whitelist {
-            let mut whitelist = cfg.get_rpc_portal_whitelist().unwrap_or_else(|| Vec::new());
+            let mut whitelist = cfg.get_rpc_portal_whitelist().unwrap_or_default();
             for cidr in rpc_portal_whitelist {
-                whitelist.push((*cidr).clone());
+                whitelist.push(*cidr);
             }
             cfg.set_rpc_portal_whitelist(Some(whitelist));
         }
@@ -792,18 +825,18 @@ impl NetworkOptions {
                 port_forward.port().expect("local bind port is missing")
             )
             .parse()
-            .expect(format!("failed to parse local bind addr {}", example_str).as_str());
+            .unwrap_or_else(|_| panic!("failed to parse local bind addr {}", example_str));
 
-            let dst_addr = format!(
-                "{}",
-                port_forward
-                    .path_segments()
-                    .expect(format!("remote destination addr is missing {}", example_str).as_str())
-                    .next()
-                    .expect(format!("remote destination addr is missing {}", example_str).as_str())
-            )
-            .parse()
-            .expect(format!("failed to parse remote destination addr {}", example_str).as_str());
+            let dst_addr = port_forward
+                .path_segments()
+                .unwrap_or_else(|| panic!("remote destination addr is missing {}", example_str))
+                .next()
+                .unwrap_or_else(|| panic!("remote destination addr is missing {}", example_str))
+                .to_string()
+                .parse()
+                .unwrap_or_else(|_| {
+                    panic!("failed to parse remote destination addr {}", example_str)
+                });
 
             let port_forward_item = PortForwardConfig {
                 bind_addr,
@@ -822,6 +855,9 @@ impl NetworkOptions {
         };
         if let Some(v) = self.disable_encryption {
             f.enable_encryption = !v;
+        }
+        if let Some(algorithm) = &self.encryption_algorithm {
+            f.encryption_algorithm = algorithm.clone();
         }
         if let Some(v) = self.disable_ipv6 {
             f.enable_ipv6 = !v;
@@ -870,6 +906,10 @@ impl NetworkOptions {
             .foreign_relay_bps_limit
             .unwrap_or(f.foreign_relay_bps_limit);
         f.multi_thread_count = self.multi_thread_count.unwrap_or(f.multi_thread_count);
+        f.disable_relay_kcp = self.disable_relay_kcp.unwrap_or(f.disable_relay_kcp);
+        f.enable_relay_foreign_network_kcp = self
+            .enable_relay_foreign_network_kcp
+            .unwrap_or(f.enable_relay_foreign_network_kcp);
         cfg.set_flags(f);
 
         if !self.exit_nodes.is_empty() {
@@ -1101,7 +1141,7 @@ async fn run_main(cli: Cli) -> anyhow::Result<()> {
         let mut cfg = TomlConfigLoader::default();
         cli.network_options
             .merge_into(&mut cfg)
-            .with_context(|| format!("failed to create config from cli"))?;
+            .with_context(|| "failed to create config from cli".to_string())?;
         println!("Starting easytier from cli with config:");
         println!("############### TOML ###############\n");
         println!("{}", cfg.dump());
@@ -1116,7 +1156,7 @@ async fn run_main(cli: Cli) -> anyhow::Result<()> {
                 .into_values()
                 .filter_map(|info| info.error_msg)
                 .collect::<Vec<_>>();
-            if errs.len() > 0 {
+            if !errs.is_empty() {
                 return Err(anyhow::anyhow!("some instances stopped with errors"));
             }
         }

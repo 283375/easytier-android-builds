@@ -1,6 +1,6 @@
-From 284cd1f8e32b89569711fe7b74c4eba6950fea03 Mon Sep 17 00:00:00 2001
+From aaa87b6e678b818147be3cbb47f31c199b8b2f28 Mon Sep 17 00:00:00 2001
 From: 283375 <bilibili283375@163.com>
-Date: Wed, 27 Aug 2025 18:09:38 +0800
+Date: Thu, 29 Jan 2026 01:43:48 +0800
 Subject: [PATCH 2/2] replace application id
 
 ---
@@ -22,18 +22,18 @@ index f55d32d..2ba300f 100644
          targetSdk = 34
          versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
 diff --git a/easytier-gui/src/composables/mobile_vpn.ts b/easytier-gui/src/composables/mobile_vpn.ts
-index a231bde..2d697e0 100644
+index 3aef5fe..30e20c3 100644
 --- a/easytier-gui/src/composables/mobile_vpn.ts
 +++ b/easytier-gui/src/composables/mobile_vpn.ts
-@@ -53,7 +53,7 @@ async function doStartVpn(ipv4Addr: string, cidr: number, routes: string[]) {
-   const start_ret = await start_vpn({
+@@ -58,7 +58,7 @@ async function doStartVpn(ipv4Addr: string, cidr: number, routes: string[], dns?
      ipv4Addr: `${ipv4Addr}/${cidr}`,
      routes,
+     dns,
 -    disallowedApplications: ['com.kkrainbow.easytier'],
 +    disallowedApplications: ['xyz.sevive.easytier.split'],
      mtu: 1300,
    })
    if (start_ret?.errorMsg?.length) {
 -- 
-2.51.0.windows.1
+2.52.0.windows.1
 
